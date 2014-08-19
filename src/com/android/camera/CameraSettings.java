@@ -236,7 +236,15 @@ public class CameraSettings {
             buildStorage(group, storage);
         }
         if (slowShutter != null) {
-            filterUnsupportedOptions(group, slowShutter, getSupportedSlowShutter(mParameters));
+            slowShutter.setDefaultValue(getDefaultSlowShutterValue(mParameters));
+            List<String> slowShutterParams = getSupportedSlowShutter(mParameters);
+            if (slowShutterParams != null) {
+                filterUnsupportedOptions(group, slowShutter, slowShutterParams);
+            } else {
+                if (getMaxExposureTime(mParameters) == -1) {
+                    removePreference(group, slowShutter.getKey());
+                }
+            }
         }
 
         int frontCameraId = CameraHolder.instance().getFrontCameraId();
@@ -541,6 +549,12 @@ public class CameraSettings {
         if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_HIGH)) {
             supported.add(Integer.toString(CamcorderProfile.QUALITY_HIGH));
         }
+        if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_4kDCI)) {
+            supported.add(Integer.toString(CamcorderProfile.QUALITY_4kDCI));
+        }
+        if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_4kUHD)) {
+            supported.add(Integer.toString(CamcorderProfile.QUALITY_4kUHD));
+        }
         if (CamcorderProfile.hasProfile(cameraId, CamcorderProfile.QUALITY_1080P)) {
             supported.add(Integer.toString(CamcorderProfile.QUALITY_1080P));
         }
@@ -569,6 +583,9 @@ public class CameraSettings {
         if (CameraUtil.useHTCCamMode()) {
             params.set("cam-mode", on ? "1" : "0");
         }
+        if (CameraUtil.useOppoCamMode()) {
+            params.set("oppo-app", "1");
+        }
     }
 
     /**
@@ -591,14 +608,56 @@ public class CameraSettings {
         return null;
     }
 
+    public static int getMaxExposureTime(Parameters params) {
+        String p = params.get("max-exposure-time");
+        if (p != null) {
+            return Integer.valueOf(p);
+        }
+        return -1;
+    }
+
     public static void setSlowShutter(Parameters params, String value) {
         if (getSupportedSlowShutter(params) != null) {
             params.set("slow-shutter", value);
+        } else {
+            int maxExposureTime = getMaxExposureTime(params);
+            if (maxExposureTime != -1 ){
+                int exposureTime = Integer.valueOf(value);
+                if (exposureTime <= maxExposureTime) {
+                    params.set("exposure-time", value);
+                }
+            }
         }
     }
 
-    public static boolean isSlowShutterEnabled(Parameters params) {
-        return (getSupportedSlowShutter(params) != null) &&
-                !"slow-shutter-off".equals(params.get("slow-shutter"));
+    public static String getDefaultSlowShutterValue(Parameters params) {
+        List<String> slowShutterValues = getSupportedSlowShutter(params);
+        if (slowShutterValues != null && slowShutterValues.size() != 0) {
+            return slowShutterValues.get(0);
+        } else if (getMaxExposureTime(params) != -1) {
+            return "0";
+        }
+        return null;
+    }
+
+    public static int getSlowShutterMilliSecs(Context context, String value) {
+        String[] msArray = context.getResources().getStringArray(
+                R.array.pref_camera_slow_shutter_entryvalues_ms);
+        String[] valueArray = context.getResources().getStringArray(
+                R.array.pref_camera_slow_shutter_entryvalues);
+
+        int valueIndex = 0;
+        boolean found = false;
+        for (String candidate : valueArray) {
+            if (candidate.equals(value)){
+                found = true;
+                break;
+            }
+            valueIndex++;
+        }
+        if (found) {
+            return Integer.valueOf(msArray[valueIndex]);
+        }
+        return 0;
     }
 }
